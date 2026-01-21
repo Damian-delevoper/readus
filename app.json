@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "ReadUs",
+    "slug": "readus",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.readus.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.readus.app"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-document-picker",
+        {
+          "iCloudStorageService": true
+        }
+      ]
+    ],
+    "scheme": "readus",
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "885a398b-9d85-4f38-9708-2ac3dde5955b"
+      }
+    }
+  }
+}

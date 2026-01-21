@@ -1,20 +1,18 @@
 module.exports = function(api) {
   api.cache(true);
-  const nativewindBabel = require("nativewind/babel");
-  const allPlugins = nativewindBabel().plugins;
   
-  // Filter out react-native-worklets/plugin if not installed
-  const plugins = allPlugins.filter((plugin) => {
-    if (typeof plugin === 'string' && plugin === 'react-native-worklets/plugin') {
-      try {
-        require.resolve('react-native-worklets/plugin');
-        return true;
-      } catch (e) {
-        return false; // Filter out if not installed
+  // Manually configure plugins to avoid NativeWind's automatic worklets inclusion
+  // NativeWind's babel helper includes worklets which causes config reading issues
+  const plugins = [
+    [
+      "@babel/plugin-transform-react-jsx",
+      {
+        runtime: "automatic",
+        importSource: "react-native-css-interop"
       }
-    }
-    return true;
-  });
+    ],
+    "react-native-reanimated/plugin" // Must be last
+  ];
   
   return {
     presets: [

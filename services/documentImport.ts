@@ -3,10 +3,20 @@
  * Handles importing documents from various sources and formats
  */
 
+import { Platform, Alert } from 'react-native';
 import * as FileSystemLegacy from 'expo-file-system/legacy';
-import * as DocumentPicker from 'expo-document-picker';
 import { Document, DocumentFormat } from '@/types';
 import { insertDocument } from './database';
+
+// Conditional import for expo-document-picker
+let DocumentPicker: any = null;
+try {
+  if (Platform.OS === 'ios' || Platform.OS === 'android') {
+    DocumentPicker = require('expo-document-picker');
+  }
+} catch (e) {
+  console.warn('expo-document-picker not available:', e);
+}
 
 // Use legacy API for compatibility
 const DOCUMENTS_DIR = `${FileSystemLegacy.documentDirectory || ''}documents/`;
@@ -93,6 +103,15 @@ async function generateMetadata(
  * Import document from file picker
  */
 export async function importDocument(): Promise<Document | null> {
+  if (!DocumentPicker) {
+    console.error('expo-document-picker is not available. Please use a development build.');
+    Alert.alert(
+      'Feature Not Available',
+      'Document picker requires a development build. Please build the app using EAS Build or run locally.'
+    );
+    return null;
+  }
+
   try {
     const result = await DocumentPicker.getDocumentAsync({
       type: ['application/pdf', 'application/epub+zip', 'text/plain', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],

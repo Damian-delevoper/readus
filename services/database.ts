@@ -3,17 +3,32 @@
  * Handles all database operations for local-first storage
  */
 
-import * as SQLite from 'expo-sqlite';
+import { Platform } from 'react-native';
 import { Document, Tag, DocumentTag, ReadingPosition, Highlight, Note } from '@/types';
+
+// Conditional import for expo-sqlite
+let SQLite: any = null;
+try {
+  if (Platform.OS === 'ios' || Platform.OS === 'android') {
+    SQLite = require('expo-sqlite');
+  }
+} catch (e) {
+  console.warn('expo-sqlite not available:', e);
+}
 
 const DB_NAME = 'readus.db';
 
-let db: SQLite.SQLiteDatabase | null = null;
+let db: any = null;
 
 /**
  * Initialize database connection and create tables
  */
-export async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
+export async function initDatabase(): Promise<any> {
+  if (!SQLite) {
+    console.error('expo-sqlite is not available. Database operations will not work.');
+    throw new Error('expo-sqlite is not available. Please use a development build.');
+  }
+
   if (db) {
     return db;
   }
@@ -104,7 +119,10 @@ export async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
 /**
  * Get database instance
  */
-export function getDatabase(): SQLite.SQLiteDatabase {
+export function getDatabase(): any {
+  if (!SQLite) {
+    throw new Error('expo-sqlite is not available. Please use a development build.');
+  }
   if (!db) {
     throw new Error('Database not initialized. Call initDatabase() first.');
   }
@@ -136,19 +154,19 @@ export async function insertDocument(document: Document): Promise<void> {
 
 export async function getAllDocuments(): Promise<Document[]> {
   const database = getDatabase();
-  const result = await database.getAllAsync<Document>(
+  const result = await database.getAllAsync(
     'SELECT * FROM documents ORDER BY lastOpenedAt DESC, createdAt DESC'
   );
-  return result;
+  return result as Document[];
 }
 
 export async function getDocumentById(id: string): Promise<Document | null> {
   const database = getDatabase();
-  const result = await database.getFirstAsync<Document>(
+  const result = await database.getFirstAsync(
     'SELECT * FROM documents WHERE id = ?',
     [id]
   );
-  return result || null;
+  return (result as Document) || null;
 }
 
 export async function updateDocument(id: string, updates: Partial<Document>): Promise<void> {
@@ -188,17 +206,17 @@ export async function insertTag(tag: Tag): Promise<void> {
 
 export async function getAllTags(): Promise<Tag[]> {
   const database = getDatabase();
-  return await database.getAllAsync<Tag>('SELECT * FROM tags ORDER BY name');
+  return (await database.getAllAsync('SELECT * FROM tags ORDER BY name')) as Tag[];
 }
 
 export async function getTagsByDocumentId(documentId: string): Promise<Tag[]> {
   const database = getDatabase();
-  return await database.getAllAsync<Tag>(
+  return (await database.getAllAsync(
     `SELECT t.* FROM tags t
      INNER JOIN document_tags dt ON t.id = dt.tagId
      WHERE dt.documentId = ?`,
     [documentId]
-  );
+  )) as Tag[];
 }
 
 export async function addTagToDocument(documentId: string, tagId: string): Promise<void> {
@@ -233,11 +251,11 @@ export async function upsertReadingPosition(position: ReadingPosition): Promise<
 
 export async function getReadingPosition(documentId: string): Promise<ReadingPosition | null> {
   const database = getDatabase();
-  const result = await database.getFirstAsync<ReadingPosition>(
+  const result = await database.getFirstAsync(
     'SELECT * FROM reading_positions WHERE documentId = ?',
     [documentId]
   );
-  return result || null;
+  return (result as ReadingPosition) || null;
 }
 
 // Highlight operations
@@ -261,17 +279,17 @@ export async function insertHighlight(highlight: Highlight): Promise<void> {
 
 export async function getHighlightsByDocumentId(documentId: string): Promise<Highlight[]> {
   const database = getDatabase();
-  return await database.getAllAsync<Highlight>(
+  return (await database.getAllAsync(
     'SELECT * FROM highlights WHERE documentId = ? ORDER BY startPosition',
     [documentId]
-  );
+  )) as Highlight[];
 }
 
 export async function getAllHighlights(): Promise<Highlight[]> {
   const database = getDatabase();
-  return await database.getAllAsync<Highlight>(
+  return (await database.getAllAsync(
     'SELECT * FROM highlights ORDER BY createdAt DESC'
-  );
+  )) as Highlight[];
 }
 
 export async function deleteHighlight(id: string): Promise<void> {
@@ -299,23 +317,23 @@ export async function insertNote(note: Note): Promise<void> {
 
 export async function getNotesByDocumentId(documentId: string): Promise<Note[]> {
   const database = getDatabase();
-  return await database.getAllAsync<Note>(
+  return (await database.getAllAsync(
     'SELECT * FROM notes WHERE documentId = ? ORDER BY position',
     [documentId]
-  );
+  )) as Note[];
 }
 
 export async function getNotesByHighlightId(highlightId: string): Promise<Note[]> {
   const database = getDatabase();
-  return await database.getAllAsync<Note>(
+  return (await database.getAllAsync(
     'SELECT * FROM notes WHERE highlightId = ? ORDER BY createdAt',
     [highlightId]
-  );
+  )) as Note[];
 }
 
 export async function getAllNotes(): Promise<Note[]> {
   const database = getDatabase();
-  return await database.getAllAsync<Note>('SELECT * FROM notes ORDER BY updatedAt DESC');
+  return (await database.getAllAsync('SELECT * FROM notes ORDER BY updatedAt DESC')) as Note[];
 }
 
 export async function updateNote(id: string, text: string): Promise<void> {

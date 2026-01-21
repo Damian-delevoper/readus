@@ -16,7 +16,10 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.readus.app"
+      "bundleIdentifier": "com.readus.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -35,7 +38,8 @@
         {
           "iCloudStorageService": true
         }
-      ]
+      ],
+      "expo-sqlite"
     ],
     "scheme": "readus",
     "extra": {

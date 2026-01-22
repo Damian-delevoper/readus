@@ -7,6 +7,7 @@ export type DocumentStatus = 'unread' | 'reading' | 'finished';
 export type HighlightType = 'idea' | 'definition' | 'quote';
 
 export type ReaderTheme = 'light' | 'dark' | 'sepia';
+export type ReadingMode = 'page' | 'scroll' | 'column' | 'auto-scroll';
 
 export type DocumentFormat = 'pdf' | 'epub' | 'txt' | 'docx';
 
@@ -23,6 +24,8 @@ export interface Document {
   updatedAt: string;
   lastOpenedAt: string | null;
   coverImagePath: string | null;
+  extractedText?: string; // Full text content for search indexing
+  isFavorite?: boolean; // Favorite status
 }
 
 export interface Tag {
@@ -30,6 +33,16 @@ export interface Tag {
   name: string;
   color: string;
   createdAt: string;
+}
+
+export interface Collection {
+  id: string;
+  name: string;
+  color: string | null;
+  icon: string | null;
+  parentId: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface DocumentTag {
@@ -43,6 +56,14 @@ export interface ReadingPosition {
   position: number; // page number or character position
   progress: number; // 0-100 percentage
   updatedAt: string;
+}
+
+export interface Bookmark {
+  id: string;
+  documentId: string;
+  page: number;
+  note: string | null;
+  createdAt: string;
 }
 
 export interface Highlight {
@@ -84,6 +105,9 @@ export interface ReaderSettings {
   defaultHighlightColor: string;
   autoBackup: boolean;
   biometricLock: boolean;
+  fontFamily?: string; // Font family name
+  readingMode?: ReadingMode; // Reading mode
+  autoScrollSpeed?: number; // Words per minute for auto-scroll (default: 200)
 }
 
 export interface AIService {

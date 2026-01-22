@@ -1,12 +1,72 @@
+# Dependencies
 node_modules/
-.expo/
-dist/
 npm-debug.*
+yarn-error.log
+
+# Expo
+.expo/
+.expo-shared/
+dist/
+web-build/
+
+# iOS
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xcuserstate
+project.xcworkspace/
+xcuserdata/
+*.moved-aside
+DerivedData/
+*.hmap
+*.ipa
+*.xcuserstate
+ios/.xcode.env.local
+
+# Android
+*.apk
+*.ap_
+*.aab
 *.jks
+*.keystore
 *.p8
 *.p12
 *.key
 *.mobileprovision
 *.orig.*
-web-build/
+android/app/build/
+android/.gradle/
+android/local.properties
+android/captures/
+android/app/release/
+
+# macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Build artifacts
+build/
+*.tgz

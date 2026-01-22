@@ -9,6 +9,8 @@ import { useHighlightStore } from '@/stores/highlightStore';
 import { Highlight, Note } from '@/types';
 import { EmptyState } from '@/components/EmptyState';
 import { useThemeStore, lightColors, darkColors } from '@/stores/themeStore';
+import { exportAllHighlights } from '@/services/exportService';
+import { Alert } from 'react-native';
 
 export default function HighlightsScreen() {
   const router = useRouter();
@@ -24,6 +26,16 @@ export default function HighlightsScreen() {
 
   const handleItemPress = (item: Highlight | Note) => {
     router.push(`/reader/${item.documentId}`);
+  };
+
+  const handleExport = async () => {
+    try {
+      await exportAllHighlights();
+      Alert.alert('Success', 'Highlights and notes exported successfully');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to export highlights and notes');
+      console.error('Export error:', error);
+    }
   };
 
   const renderHighlight = ({ item }: { item: Highlight }) => (
@@ -64,6 +76,11 @@ export default function HighlightsScreen() {
     <View style={[styles.container, { backgroundColor: colors.surface }]}>
       <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
         <Text style={[styles.title, { color: colors.text }]}>Highlights & Notes</Text>
+        {(highlights.length > 0 || notes.length > 0) && (
+          <TouchableOpacity onPress={handleExport} style={styles.exportButton}>
+            <Text style={[styles.exportButtonText, { color: colors.primary }]}>Export</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <View style={[styles.tabs, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
@@ -126,6 +143,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     padding: 16,
     paddingTop: 60,
     borderBottomWidth: 1,
@@ -133,6 +153,13 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: '700',
+  },
+  exportButton: {
+    padding: 8,
+  },
+  exportButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   tabs: {
     flexDirection: 'row',

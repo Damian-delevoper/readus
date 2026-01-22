@@ -16,6 +16,9 @@ const defaultSettings: ReaderSettings = {
   defaultHighlightColor: '#ffd700',
   autoBackup: false,
   biometricLock: false,
+  fontFamily: 'System', // Default to system font
+  readingMode: 'page', // Default to page mode
+  autoScrollSpeed: 200, // Default auto-scroll speed (WPM)
 };
 
 interface ReaderStore {

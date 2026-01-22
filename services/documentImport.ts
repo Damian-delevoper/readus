@@ -6,7 +6,11 @@
 import { Platform, Alert } from 'react-native';
 import * as FileSystemLegacy from 'expo-file-system/legacy';
 import { Document, DocumentFormat } from '@/types';
-import { insertDocument } from './database';
+import { insertDocument, waitForDatabase } from './database';
+import { extractEPUBText, getEPUBMetadata } from './epubParser';
+import { extractDOCXText, getDOCXMetadata } from './docxParser';
+// PDF text extraction is optional - import only when needed to avoid bundling issues
+// import { extractPDFText } from './pdfTextExtractor';
 
 // Conditional import for expo-document-picker
 let DocumentPicker: any = null;
@@ -46,23 +50,43 @@ function calculateReadingTime(wordCount: number): number {
  * Extract text from file based on format
  */
 async function extractText(filePath: string, format: DocumentFormat): Promise<string> {
-  switch (format) {
-    case 'txt':
-      return await FileSystemLegacy.readAsStringAsync(filePath);
-    case 'pdf':
-      // PDF text extraction would require additional library
-      // For now, return placeholder
-      return '';
-    case 'epub':
-      // EPUB parsing would require additional library
-      // For now, return placeholder
-      return '';
-    case 'docx':
-      // DOCX parsing would require additional library
-      // For now, return placeholder
-      return '';
-    default:
-      return '';
+  try {
+    switch (format) {
+      case 'txt':
+        try {
+          return await FileSystemLegacy.readAsStringAsync(filePath);
+        } catch (error) {
+          console.error('Error reading TXT file:', error);
+          return '';
+        }
+      case 'pdf':
+        // PDF text extraction requires pdf-parse which doesn't work in React Native
+        // For now, return empty - PDFs can still be viewed natively
+        // Text extraction can be added later with a React Native-compatible solution
+        // or server-side processing
+        return '';
+      case 'epub':
+        // Use EPUB parser to extract text
+        try {
+          return await extractEPUBText(filePath);
+        } catch (error) {
+          console.error('Error extracting EPUB text:', error);
+          return 'EPUB format is not yet fully supported. The file has been imported but text extraction is not available.';
+        }
+      case 'docx':
+        // Use DOCX parser to extract text
+        try {
+          return await extractDOCXText(filePath);
+        } catch (error) {
+          console.error('Error extracting DOCX text:', error);
+          return 'DOCX format is not yet fully supported. The file has been imported but text extraction is not available.';
+        }
+      default:
+        return '';
+    }
+  } catch (error) {
+    console.error('Error extracting text:', error);
+    return '';
   }
 }
 
@@ -89,8 +113,19 @@ async function generateMetadata(
   const wordCount = countWords(text);
   const estimatedReadingTime = calculateReadingTime(wordCount);
   
-  // Estimate page count (assuming ~250 words per page)
-  const pageCount = Math.max(1, Math.ceil(wordCount / 250));
+  // Estimate page count based on format
+  let pageCount = 1;
+  if (format === 'pdf') {
+    // For PDFs, we'll estimate based on file size if text extraction isn't available
+    // Default to 10 pages if no text extracted
+    pageCount = wordCount > 0 ? Math.max(1, Math.ceil(wordCount / 250)) : 10;
+  } else if (format === 'epub' || format === 'docx') {
+    // For EPUB/DOCX, estimate based on text if available, otherwise default
+    pageCount = wordCount > 0 ? Math.max(1, Math.ceil(wordCount / 250)) : 5;
+  } else {
+    // For TXT and other text formats
+    pageCount = Math.max(1, Math.ceil(wordCount / 250));
+  }
 
   return {
     wordCount,
@@ -148,6 +183,20 @@ export async function importDocument(): Promise<Document | null> {
     const text = await extractText(newFilePath, format);
     const metadata = await generateMetadata(newFilePath, format, text);
 
+    // Generate thumbnail/cover image (async, non-blocking)
+    const { getDocumentThumbnail } = await import('./imageOptimization');
+    const { updateDocument } = await import('./database');
+    getDocumentThumbnail(id, newFilePath, format, fileName.replace(/\.[^/.]+$/, ''))
+      .then((thumbnailPath) => {
+        if (thumbnailPath) {
+          // Update document with thumbnail path
+          updateDocument(id, { coverImagePath: thumbnailPath }).catch(console.error);
+        }
+      })
+      .catch((error) => {
+        console.warn('Error generating thumbnail:', error);
+      });
+
     // Create document object
     const document: Document = {
       id,
@@ -161,11 +210,16 @@ export async function importDocument(): Promise<Document | null> {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       lastOpenedAt: null,
-      coverImagePath: null,
+      coverImagePath: null, // Will be updated when thumbnail is generated
+      extractedText: text || undefined, // Store extracted text for FTS5 search
     };
 
+    // Ensure database is initialized before inserting
+    await waitForDatabase();
+    
     // Save to database
     await insertDocument(document);
+    console.log(`Document saved to database: ${document.title} (${document.id})`);
 
     return document;
   } catch (error) {
@@ -212,9 +266,14 @@ export async function importDocumentFromUri(uri: string, fileName?: string): Pro
       updatedAt: new Date().toISOString(),
       lastOpenedAt: null,
       coverImagePath: null,
+      extractedText: text || undefined, // Store extracted text for FTS5 search
     };
 
+    // Ensure database is initialized before inserting
+    await waitForDatabase();
+    
     await insertDocument(document);
+    console.log(`Document saved to database: ${document.title} (${document.id})`);
     return document;
   } catch (error) {
     console.error('Error importing document from URI:', error);

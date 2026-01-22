@@ -3,7 +3,7 @@
  */
 
 import React, { useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Switch } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Switch, Alert } from 'react-native';
 import { useReaderStore } from '@/stores/readerStore';
 import { useThemeStore, lightColors, darkColors } from '@/stores/themeStore';
 import { ReaderTheme } from '@/types';
@@ -185,6 +185,23 @@ export default function SettingsScreen() {
           </View>
         </View>
       </View>
+
+      <View style={[styles.section, { backgroundColor: colors.background, borderColor: colors.border }]}>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Cache Management</Text>
+
+        <View style={styles.setting}>
+          <TouchableOpacity
+            onPress={async () => {
+              const { clearThumbnailCache } = await import('@/services/imageOptimization');
+              await clearThumbnailCache();
+              Alert.alert('Success', 'Thumbnail cache cleared');
+            }}
+            style={[styles.button, { backgroundColor: colors.surface }]}
+          >
+            <Text style={[styles.buttonText, { color: colors.text }]}>Clear Thumbnail Cache</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
     </ScrollView>
   );
 }
@@ -266,6 +283,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sliderValueText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  button: {
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  buttonText: {
     fontSize: 16,
     fontWeight: '500',
   },

@@ -3,7 +3,7 @@
  */
 
 import { Tabs } from 'expo-router';
-import { LibraryIcon, SearchIcon, BookOpenIcon, SettingsIcon } from '@/components/Icons';
+import { LibraryIcon, SearchIcon, BookOpenIcon, SettingsIcon, StatisticsIcon } from '@/components/Icons';
 import { useThemeStore, lightColors, darkColors } from '@/stores/themeStore';
 
 export default function TabsLayout() {
@@ -41,6 +41,13 @@ export default function TabsLayout() {
         options={{
           title: 'Search',
           tabBarIcon: ({ color, size }) => <SearchIcon size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="statistics"
+        options={{
+          title: 'Stats',
+          tabBarIcon: ({ color, size }) => <StatisticsIcon size={size} color={color} />,
         }}
       />
       <Tabs.Screen

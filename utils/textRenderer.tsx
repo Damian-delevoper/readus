@@ -4,18 +4,20 @@
  */
 
 import React from 'react';
-import { Text, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text } from 'react-native';
 import { Highlight } from '@/types';
 
 interface HighlightedTextProps {
   text: string;
   highlights: Highlight[];
-  onHighlightPress?: (highlight: Highlight) => void;
+  onHighlightPress?: (highlight: Highlight, event?: any) => void;
   style?: any;
   fontSize?: number;
   lineHeight?: number;
   color?: string;
   fontFamily?: string;
+  /** Android: selection highlight color. Improves selection visibility. */
+  selectionColor?: string;
 }
 
 export function HighlightedText({
@@ -27,10 +29,14 @@ export function HighlightedText({
   lineHeight = 24,
   color = '#1a1a1a',
   fontFamily,
+  selectionColor,
 }: HighlightedTextProps) {
+  const textProps = { selectable: true as const, ...(selectionColor != null && { selectionColor }) };
+
   if (!highlights || highlights.length === 0) {
     return (
       <Text
+        {...textProps}
         style={[
           {
             fontSize,
@@ -94,6 +100,7 @@ export function HighlightedText({
 
   return (
     <Text
+      {...textProps}
       style={[
         {
           fontSize,
@@ -109,11 +116,12 @@ export function HighlightedText({
           return (
             <Text
               key={index}
+              {...textProps}
               style={{
-                backgroundColor: segment.highlight.color + '40', // Add transparency
+                backgroundColor: segment.highlight.color + '40',
                 color: color,
               }}
-              onPress={() => onHighlightPress?.(segment.highlight!)}
+              onPress={(e) => onHighlightPress?.(segment.highlight!, e)}
             >
               {segment.text}
             </Text>

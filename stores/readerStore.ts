@@ -6,19 +6,20 @@ import { create } from 'zustand';
 import { ReaderSettings, ReaderTheme } from '@/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const SETTINGS_KEY = '@readus:reader_settings';
+const SETTINGS_KEY = '@scriptum:reader_settings';
 
 const defaultSettings: ReaderSettings = {
   fontSize: 16,
-  lineSpacing: 1.5,
-  margin: 20,
+  lineSpacing: 1.6,
+  margin: 24,
   theme: 'light',
   defaultHighlightColor: '#ffd700',
   autoBackup: false,
   biometricLock: false,
-  fontFamily: 'System', // Default to system font
-  readingMode: 'page', // Default to page mode
-  autoScrollSpeed: 200, // Default auto-scroll speed (WPM)
+  fontFamily: 'serif',
+  paragraphSpacing: 12,
+  readingMode: 'page',
+  autoScrollSpeed: 200,
 };
 
 interface ReaderStore {

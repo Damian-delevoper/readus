@@ -1,10 +1,10 @@
-# ReadUs
+# Scriptum
 
 A production-ready personal document reader & library app for iOS and Android.
 
 ## Overview
 
-ReadUs is a local-first, distraction-free document reader that helps you read, organize, annotate, and understand your personal documents. Think Notion × Kindle × Apple Books — but better.
+Scriptum is a local-first, distraction-free document reader that helps you read, organize, annotate, and understand your personal documents. Think Notion × Kindle × Apple Books — but better.
 
 ## Features
 
@@ -56,7 +56,7 @@ npm run android # For Android
 ## Project Structure
 
 ```
-readus/
+scriptum/
 ├── app/                    # Expo Router screens
 │   ├── (tabs)/            # Bottom tab navigation
 │   │   ├── index.tsx      # Library screen

@@ -35,7 +35,13 @@ export default function SearchScreen() {
   };
 
   const handleResultPress = (result: SearchResult) => {
-    router.push(`/reader/${result.documentId}`);
+    // Navigate to exact position in document if available
+    // SearchResult.position is optional and represents the character/page position
+    const position = result.position?.toString() || '1';
+    router.push({
+      pathname: `/reader/${result.documentId}`,
+      params: { position },
+    });
   };
 
   const renderResult = ({ item }: { item: SearchResult }): React.ReactElement => (

@@ -89,7 +89,9 @@ class DictionaryService {
     } catch (error) {
       console.error('Dictionary lookup error:', error);
       
-      // Fallback: Try alternative approach or return null
+      // Offline-first: Return null gracefully without blocking
+      // Dictionary is a convenience feature, not critical for core functionality
+      // The error is already logged, user can try again when online
       return null;
     }
   }

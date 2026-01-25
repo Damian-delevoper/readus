@@ -12,7 +12,7 @@ Your project is committed and ready to push! You just need to create the GitHub 
 
 2. **Create and push repository**:
    ```bash
-   gh repo create readus --public --source=. --remote=origin --push
+   gh repo create scriptum --public --source=. --remote=origin --push
    ```
 
 ## Option 2: Manual Setup via GitHub Website
@@ -20,14 +20,14 @@ Your project is committed and ready to push! You just need to create the GitHub 
 1. **Go to GitHub**: https://github.com/new
 
 2. **Create new repository**:
-   - Repository name: `readus`
+   - Repository name: `scriptum`
    - Description: "Personal document reader & library mobile app built with React Native (Expo)"
    - Visibility: Public (or Private)
    - **DO NOT** initialize with README, .gitignore, or license (we already have these)
 
 3. **After creating, run these commands**:
    ```bash
-   git remote add origin https://github.com/YOUR_USERNAME/readus.git
+   git remote add origin https://github.com/YOUR_USERNAME/scriptum.git
    git branch -M main
    git push -u origin main
    ```
@@ -38,7 +38,7 @@ Your project is committed and ready to push! You just need to create the GitHub 
 If you want to push to an existing repository:
 
 ```bash
-git remote add origin https://github.com/YOUR_USERNAME/readus.git
+git remote add origin https://github.com/YOUR_USERNAME/scriptum.git
 git push -u origin main
 ```
 
@@ -47,12 +47,12 @@ git push -u origin main
 ✅ All files committed  
 ✅ Ready to push  
 ✅ .gitignore configured  
-✅ Repository name: `readus`
+✅ Repository name: `scriptum`
 
 ## After Pushing
 
 Your repository will be available at:
-`https://github.com/YOUR_USERNAME/readus`
+`https://github.com/YOUR_USERNAME/scriptum`
 
 ---
 

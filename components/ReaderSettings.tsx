@@ -214,10 +214,7 @@ export function ReaderSettingsModal({
                     fontSize: settings.fontSize,
                     lineHeight: settings.fontSize * settings.lineSpacing,
                     padding: settings.margin,
-                    fontFamily:
-                      settings.fontFamily && settings.fontFamily !== 'System'
-                        ? settings.fontFamily
-                        : undefined,
+                    fontFamily: settings.fontFamily === 'serif' ? 'Georgia' : 'System',
                   },
                 ]}
               >
@@ -258,6 +255,70 @@ export function ReaderSettingsModal({
                 step={2}
                 onValueChange={(value) => onUpdate({ margin: value })}
                 label="Margins"
+                formatValue={(v) => `${v}px`}
+                color={colors.primary}
+              />
+
+              {/* Font Family Selector */}
+              <View style={styles.fontFamilyContainer}>
+                <Text style={[styles.settingLabel, { color: colors.text }]}>Font Family</Text>
+                <View style={styles.fontFamilyRow}>
+                  <TouchableOpacity
+                    onPress={() => onUpdate({ fontFamily: 'serif' })}
+                    style={[
+                      styles.fontOption,
+                      {
+                        backgroundColor: settings.fontFamily === 'serif' ? colors.primary + '20' : colors.surface,
+                        borderColor: settings.fontFamily === 'serif' ? colors.primary : colors.border,
+                        borderWidth: settings.fontFamily === 'serif' ? 2 : 1,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.fontOptionText,
+                        {
+                          color: settings.fontFamily === 'serif' ? colors.primary : colors.text,
+                          fontWeight: settings.fontFamily === 'serif' ? '600' : '400',
+                        },
+                      ]}
+                    >
+                      Serif
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => onUpdate({ fontFamily: 'sans-serif' })}
+                    style={[
+                      styles.fontOption,
+                      {
+                        backgroundColor: settings.fontFamily === 'sans-serif' ? colors.primary + '20' : colors.surface,
+                        borderColor: settings.fontFamily === 'sans-serif' ? colors.primary : colors.border,
+                        borderWidth: settings.fontFamily === 'sans-serif' ? 2 : 1,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.fontOptionText,
+                        {
+                          color: settings.fontFamily === 'sans-serif' ? colors.primary : colors.text,
+                          fontWeight: settings.fontFamily === 'sans-serif' ? '600' : '400',
+                        },
+                      ]}
+                    >
+                      Sans-serif
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <Slider
+                value={settings.paragraphSpacing || 12}
+                min={0}
+                max={24}
+                step={2}
+                onValueChange={(value) => onUpdate({ paragraphSpacing: value })}
+                label="Paragraph Spacing"
                 formatValue={(v) => `${v}px`}
                 color={colors.primary}
               />

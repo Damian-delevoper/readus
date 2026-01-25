@@ -25,7 +25,13 @@ export default function HighlightsScreen() {
   }, [loadHighlights, loadNotes]);
 
   const handleItemPress = (item: Highlight | Note) => {
-    router.push(`/reader/${item.documentId}`);
+    // Navigate to exact position in document
+    // For highlights, use startPosition; for notes, use position
+    const position = 'startPosition' in item ? item.startPosition : item.position;
+    router.push({
+      pathname: `/reader/${item.documentId}`,
+      params: { position: position?.toString() || '1' },
+    });
   };
 
   const handleExport = async () => {

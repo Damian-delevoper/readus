@@ -17,7 +17,7 @@ try {
   console.warn('expo-sqlite not available:', e);
 }
 
-const DB_NAME = 'readus.db';
+const DB_NAME = 'scriptum.db';
 
 let db: any = null;
 let dbInitialized = false;

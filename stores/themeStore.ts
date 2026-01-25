@@ -8,7 +8,7 @@ import { Appearance } from 'react-native';
 
 export type AppTheme = 'light' | 'dark' | 'system';
 
-const THEME_KEY = '@readus:app_theme';
+const THEME_KEY = '@scriptum:app_theme';
 
 interface ThemeStore {
   theme: AppTheme;

@@ -1,8 +1,8 @@
-# ReadUs Architecture
+# Scriptum Architecture
 
 ## Overview
 
-ReadUs is built as a local-first, production-ready document reader app using React Native (Expo), TypeScript, and SQLite.
+Scriptum is built as a local-first, production-ready document reader app using React Native (Expo), TypeScript, and SQLite.
 
 ## Tech Stack
 
@@ -20,7 +20,7 @@ ReadUs is built as a local-first, production-ready document reader app using Rea
 ## Project Structure
 
 ```
-readus/
+scriptum/
 ├── app/                    # Expo Router screens (file-based routing)
 │   ├── _layout.tsx        # Root layout with database initialization
 │   ├── (tabs)/            # Bottom tab navigation group

@@ -1,5 +1,5 @@
 /**
- * Core type definitions for ReadUs app
+ * Core type definitions for Scriptum app
  */
 
 export type DocumentStatus = 'unread' | 'reading' | 'finished';
@@ -105,7 +105,8 @@ export interface ReaderSettings {
   defaultHighlightColor: string;
   autoBackup: boolean;
   biometricLock: boolean;
-  fontFamily?: string; // Font family name
+  fontFamily: 'serif' | 'sans-serif'; // Font family type
+  paragraphSpacing: number; // Paragraph spacing in pixels
   readingMode?: ReadingMode; // Reading mode
   autoScrollSpeed?: number; // Words per minute for auto-scroll (default: 200)
 }

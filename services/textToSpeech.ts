@@ -26,15 +26,16 @@ class TTSService {
 
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
-    
+
     try {
-      // Try to use expo-speech if available
       const Speech = await import('expo-speech');
-      this.isInitialized = true;
-      console.log('TTS initialized with expo-speech');
-    } catch (error) {
-      console.warn('expo-speech not available, TTS will be disabled:', error);
-      this.isInitialized = false;
+      const M = Speech?.default ?? Speech;
+      if (M?.speak) {
+        this.isInitialized = true;
+        console.log('TTS initialized with expo-speech');
+      }
+    } catch (e) {
+      console.warn('TTS disabled (expo-speech not available):', e);
     }
   }
 
@@ -44,39 +45,43 @@ class TTSService {
     }
 
     if (!this.isInitialized) {
-      throw new Error('TTS not available. Please install expo-speech.');
+      console.warn('TTS not available. expo-speech may not be installed or linked.');
+      return;
     }
 
     try {
       const Speech = await import('expo-speech');
-      
-      // Stop any current speech
+      const M = Speech?.default ?? Speech;
+
+      if (!M?.speak) {
+        console.warn('TTS: Speech.speak not available.');
+        return;
+      }
+
       if (this.isSpeaking) {
         await this.stop();
       }
 
       this.isSpeaking = true;
-      
-      Speech.speak(text, {
-        rate: options?.rate || 1.0,
-        pitch: options?.pitch || 1.0,
-        volume: options?.volume || 1.0,
-        language: options?.language || 'en',
+      M.speak(text, {
+        rate: options?.rate ?? 1.0,
+        pitch: options?.pitch ?? 1.0,
+        volume: options?.volume ?? 1.0,
+        language: options?.language ?? 'en',
         onDone: () => {
           this.isSpeaking = false;
         },
         onStopped: () => {
           this.isSpeaking = false;
         },
-        onError: (error: any) => {
-          console.error('TTS error:', error);
+        onError: (err: unknown) => {
+          console.warn('TTS error:', err);
           this.isSpeaking = false;
         },
       });
     } catch (error) {
-      console.error('Error speaking text:', error);
+      console.warn('TTS speak failed:', error);
       this.isSpeaking = false;
-      throw error;
     }
   }
 

@@ -70,8 +70,12 @@ export function ReaderFooter({
     }
   };
 
-  const canGoPrevious = currentPage > 1;
-  const canGoNext = currentPage < totalPages;
+  const canGoPrevious = format === 'epub' && totalChapters && currentChapter !== undefined
+    ? currentChapter > 0
+    : currentPage > 1;
+  const canGoNext = format === 'epub' && totalChapters && currentChapter !== undefined
+    ? currentChapter < totalChapters - 1
+    : currentPage < totalPages;
 
   // Note: We can't check opacity._value directly in TypeScript, so we'll always render
   // The Animated.View will handle the visibility
@@ -130,8 +134,8 @@ export function ReaderFooter({
               accessibilityLabel="Jump to page"
             >
               <Text style={[styles.pageInfo, { color: colors.text }]}>
-                {format === 'epub' && totalChapters
-                  ? `Ch. ${currentChapter || 1}/${totalChapters}`
+                {format === 'epub' && totalChapters && currentChapter !== undefined
+                  ? `Ch. ${(currentChapter || 0) + 1}/${totalChapters}`
                   : `${currentPage}/${totalPages}`}
               </Text>
               {progress > 0 && (

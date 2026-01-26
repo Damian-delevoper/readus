@@ -7,7 +7,6 @@ import { View, Text, TouchableOpacity, StyleSheet, Animated, Image } from 'react
 import { Document, DocumentStatus } from '@/types';
 import { useThemeStore, lightColors, darkColors } from '@/stores/themeStore';
 import { TrashIcon, StarIcon } from './Icons';
-import { scale } from '@/utils/animations';
 import { getDocumentThumbnail } from '@/services/imageOptimization';
 
 interface DocumentCardProps {

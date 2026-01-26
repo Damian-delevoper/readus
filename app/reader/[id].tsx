@@ -9,7 +9,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   Modal,
-  ScrollView,
+  ScrollView as RNScrollView,
   TextInput,
   Alert,
   Animated,
@@ -17,10 +17,32 @@ import {
   PanResponder,
   Dimensions,
   useWindowDimensions,
+  Platform,
+  AppState,
+  Pressable as RNPressable,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Pressable } from 'react-native-gesture-handler';
-import { Platform, AppState } from 'react-native';
+
+// Conditional import for react-native-gesture-handler components
+// Use IIFE to isolate any errors during module load
+const getGestureHandlerComponents = () => {
+  if (Platform.OS === 'web') {
+    return { Pressable: RNPressable, ScrollView: RNScrollView };
+  }
+  try {
+    const gestureHandler = require('react-native-gesture-handler');
+    return {
+      Pressable: gestureHandler?.Pressable || RNPressable,
+      ScrollView: gestureHandler?.ScrollView || RNScrollView,
+    };
+  } catch {
+    return { Pressable: RNPressable, ScrollView: RNScrollView };
+  }
+};
+
+const { Pressable, ScrollView: GestureScrollView } = getGestureHandlerComponents();
+// Use RNScrollView for regular ScrollView components, GestureScrollView for gesture-enabled ones
+const ScrollView = RNScrollView;
 import { StatusBar } from 'expo-status-bar';
 import { XIcon, SettingsIcon, EyeIcon, EyeOffIcon, ListIcon, BookmarkIcon } from '@/components/Icons';
 import { TOCModal } from '@/components/TOCModal';
@@ -34,11 +56,9 @@ import { useReaderStore } from '@/stores/readerStore';
 import { useHighlightStore } from '@/stores/highlightStore';
 import { getDocumentById, getReadingPosition, upsertReadingPosition, updateDocument, insertBookmark, getBookmarksByDocumentId, deleteBookmark } from '@/services/database';
 import * as SQLite from 'expo-sqlite';
-import * as FileSystem from 'expo-file-system';
 import * as FileSystemLegacy from 'expo-file-system/legacy';
 import { startReadingSession, endReadingSession } from '@/services/readingStatistics';
-import { Bookmark } from '@/types';
-import { Document, HighlightType } from '@/types';
+import { Bookmark, Document, HighlightType } from '@/types';
 import { parseEPUB, getEPUBTOC, getEPUBChapterContent, EPUBChapter, EPUBContent } from '@/services/epubParser';
 import { parseDOCX, DOCXContent } from '@/services/docxParser';
 import RenderHTML from 'react-native-render-html';
@@ -47,6 +67,8 @@ import { HighlightedText } from '@/utils/textRenderer';
 import { getReaderThemeColors, highlightColors } from '@/utils/readerTheme';
 import { HighlightTypeSelector } from '@/components/HighlightTypeSelector';
 import { NoteModal } from '@/components/NoteModal';
+import { ZoomableScrollView } from '@/components/ZoomableScrollView';
+import { SelectableTextRenderer } from '@/components/SelectableTextRenderer';
 
 // Conditional import for react-native-pdf (native only, not for web)
 let Pdf: any = null;
@@ -65,7 +87,7 @@ export default function ReaderScreen() {
   const { id, position: initialPositionParam } = useLocalSearchParams<{ id: string; position?: string }>();
   const router = useRouter();
   const pdfRef = useRef<any>(null);
-  const epubScrollRef = useRef<ScrollView>(null);
+  const epubScrollRef = useRef<any>(null);
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme);
   const colors = resolvedTheme === 'dark' ? darkColors : lightColors;
   const { width: screenWidth } = useWindowDimensions();
@@ -92,6 +114,7 @@ export default function ReaderScreen() {
   const [selectedText, setSelectedText] = useState('');
   const [showHighlightModal, setShowHighlightModal] = useState(false);
   const [showNoteModal, setShowNoteModal] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
   const [selectionPosition, setSelectionPosition] = useState({ x: 0, y: 0 });
   const [showSelectionToolbar, setShowSelectionToolbar] = useState(false);
   const [highlightType, setHighlightType] = useState<HighlightType>('idea');
@@ -408,6 +431,10 @@ export default function ReaderScreen() {
       // For other formats, use document.pageCount
       setTotalPages(doc.format === 'pdf' ? null : (doc.pageCount || 1));
       setMaxPageSeen(doc.format === 'pdf' ? (doc.pageCount || 1) : 1);
+      // Reset PDF error state when document changes
+      if (doc.format === 'pdf') {
+        setPdfError(null);
+      }
       
       // Load reading position
       // Priority: 1) URL param (from highlights/search), 2) Saved position, 3) Default (page 1)
@@ -470,7 +497,11 @@ export default function ReaderScreen() {
           // The scroll restoration happens after loadTextContent completes
           setTimeout(() => {
             if (epubScrollRef.current && initialScrollY > 0) {
-              epubScrollRef.current.scrollTo({ y: initialScrollY, animated: false });
+              try {
+                epubScrollRef.current.scrollTo?.({ y: initialScrollY, animated: false });
+              } catch (e) {
+                console.warn('Could not scroll to position:', e);
+              }
             }
           }, 800); // Longer delay to ensure EPUB content is fully rendered
         }
@@ -533,6 +564,75 @@ export default function ReaderScreen() {
       return () => clearTimeout(timer);
     }
   }, [document, totalPages, Pdf, refreshDocuments]);
+
+  // Verify PDF file exists when document changes
+  useEffect(() => {
+    if (document?.format === 'pdf' && Pdf) {
+      const checkPdfFile = async () => {
+        try {
+          // Normalize file path using the same logic as the PDF component
+          let pdfUri = document.filePath.trim();
+          
+          // Remove any existing file:// prefix (handle both file:// and file:///)
+          if (pdfUri.startsWith('file:///')) {
+            pdfUri = pdfUri.substring(7); // Remove 'file:///' (7 chars)
+          } else if (pdfUri.startsWith('file://')) {
+            pdfUri = pdfUri.substring(7); // Remove 'file://' (7 chars)
+          }
+          
+          // Ensure path starts with exactly one / for absolute path
+          if (!pdfUri.startsWith('/')) {
+            // Relative path - prepend document directory
+            const docDir = FileSystemLegacy.documentDirectory || '';
+            let docPath = docDir;
+            if (docPath.startsWith('file:///')) {
+              docPath = docPath.substring(7);
+            } else if (docPath.startsWith('file://')) {
+              docPath = docPath.substring(7);
+            }
+            pdfUri = docPath + (docPath.endsWith('/') ? '' : '/') + pdfUri;
+          }
+          
+          // Normalize: ensure exactly one leading / and clean up multiple slashes in path
+          // Remove all leading slashes first, then add exactly one
+          pdfUri = pdfUri.replace(/^\/+/, ''); // Remove all leading slashes
+          pdfUri = '/' + pdfUri.replace(/\/+/g, '/'); // Add one slash and clean up multiple slashes
+          
+          // Try file check with absolute path (without file:// prefix)
+          // FileSystemLegacy.getInfoAsync should work with absolute paths on both iOS and Android
+          let fileInfo = await FileSystemLegacy.getInfoAsync(pdfUri);
+          
+          // If not found, try with file:/// prefix (some Android versions might need it)
+          if (!fileInfo.exists && Platform.OS === 'android') {
+            // Ensure we use file:/// (three slashes) not file://// (four slashes)
+            const fileUriWithPrefix = `file:///${pdfUri.replace(/^\/+/, '')}`;
+            try {
+              fileInfo = await FileSystemLegacy.getInfoAsync(fileUriWithPrefix);
+            } catch (e) {
+              // Ignore - will use original result
+            }
+          }
+          
+          if (!fileInfo.exists) {
+            console.error('PDF file does not exist at:', pdfUri);
+            console.error('Platform:', Platform.OS);
+            console.error('Document directory:', FileSystemLegacy.documentDirectory);
+            setPdfError(`PDF file not found. Please re-import the document.`);
+            setPdfLoading(false);
+          } else {
+            console.log('PDF file exists, size:', fileInfo.size);
+            // File exists, allow PDF component to render and load
+            setPdfLoading(false);
+          }
+        } catch (error) {
+          console.error('Error checking PDF file:', error);
+          // Continue anyway - file might still be accessible, allow PDF to try loading
+          setPdfLoading(false);
+        }
+      };
+      checkPdfFile();
+    }
+  }, [document?.id, document?.format, Pdf]);
 
   const loadTextContent = async (doc: Document) => {
     setLoadingContent(true);
@@ -734,12 +834,14 @@ export default function ReaderScreen() {
 
   const handleTextSelection = (text: string, position?: { x: number; y: number }) => {
     if (text && text.trim()) {
-      setSelectedText(text);
+      console.log('Text selected:', text.substring(0, 50), 'at position:', position);
+      const trimmedText = text.trim();
+      setSelectedText(trimmedText);
       if (position) {
         setSelectionPosition(position);
       } else {
         // Default position (center of screen)
-        setSelectionPosition({ x: 200, y: 300 });
+        setSelectionPosition({ x: screenWidth / 2, y: 300 });
       }
       setShowSelectionToolbar(true);
       // Hide main UI when showing text selection menu
@@ -1024,7 +1126,11 @@ export default function ReaderScreen() {
             }
             // Scroll to top when changing chapters
             if (epubScrollRef.current) {
-              epubScrollRef.current.scrollTo({ y: 0, animated: false });
+              try {
+                epubScrollRef.current.scrollTo?.({ y: 0, animated: false });
+              } catch (e) {
+                console.warn('Could not scroll to top:', e);
+              }
             }
           } catch (error) {
             console.error('Error loading chapter:', error);
@@ -1289,11 +1395,8 @@ export default function ReaderScreen() {
       />
 
       {document.format === 'pdf' ? (
-        <Pressable
-          style={{ flex: 1 }}
-          onPress={() => { if (!showSelectionToolbar) toggleUI(); }}
-        >
         <View style={{ flex: 1 }}>
+        <View style={[styles.pdfContainer, { backgroundColor: themeColors.background }]}>
           {pdfError || !Pdf || Platform.OS === 'web' ? (
             <View style={styles.fallbackContainer}>
               <Text style={[styles.fallbackText, { color: themeColors.text }]}>
@@ -1317,102 +1420,183 @@ export default function ReaderScreen() {
               </Text>
             </View>
           ) : (
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, backgroundColor: themeColors.background, width: '100%', height: '100%' }}>
               {/* PDF component - no blocking overlays to allow full interaction */}
-              {Pdf ? (
-                <Pdf
-                  ref={pdfRef}
-                  source={{ 
-                    uri: document.filePath.startsWith('file://') 
-                      ? document.filePath 
-                      : document.filePath.startsWith('/')
-                      ? `file://${document.filePath}`
-                      : `file://${FileSystemLegacy.documentDirectory || ''}${document.filePath}`,
-                    cache: true 
-                  }}
-                  page={currentPage}
-                  // Zoom settings - enables pinch to zoom
-                  maxZoom={5}
-                  minZoom={0.5}
-                  // Vertical scrolling only - no horizontal page navigation
-                  horizontal={false}
-                  spacing={0}
-                  // Fit width for better viewing
-                  fitWidth={true}
-                  // Multi-page mode - allows scrolling through all pages vertically
-                  singlePage={false}
-                onPageChanged={(page: number, numberOfPages?: number) => {
-                  // Pass numberOfPages to handlePageChange so it can update pageCount correctly
-                  handlePageChange(page, numberOfPages);
-                }}
-                onLoadComplete={async (data: any) => {
-                  // PDF loaded successfully - update total pages
-                  setPdfError(null);
-                  
-                  // react-native-pdf onLoadComplete receives an object with numberOfPages
-                  // Format: { numberOfPages: number, width: number, height: number, ... }
-                  let numberOfPages = 0;
-                  
-                  if (typeof data === 'number') {
-                    numberOfPages = data;
-                  } else if (data && typeof data === 'object') {
-                    // Try different possible property names
-                    numberOfPages = data.numberOfPages || data.numpages || data.pages || data.pageCount || 0;
+              {Pdf ? (() => {
+                // Normalize file path for iOS
+                // The filePath from the database should already be a full file:// path
+                let pdfUri = document.filePath.trim();
+                
+                // Remove any existing file:// prefix (handle both file:// and file:///)
+                if (pdfUri.startsWith('file:///')) {
+                  pdfUri = pdfUri.substring(7); // Remove 'file:///' (7 chars) -> leaves /Users/...
+                } else if (pdfUri.startsWith('file://')) {
+                  pdfUri = pdfUri.substring(7); // Remove 'file://' (7 chars) -> leaves Users/... or /Users/...
+                }
+                
+                // Ensure path starts with exactly one / for absolute path
+                if (!pdfUri.startsWith('/')) {
+                  // Relative path - prepend document directory
+                  const docDir = FileSystemLegacy.documentDirectory || '';
+                  let docPath = docDir;
+                  if (docPath.startsWith('file:///')) {
+                    docPath = docPath.substring(7);
+                  } else if (docPath.startsWith('file://')) {
+                    docPath = docPath.substring(7);
                   }
-                  
-                  console.log('PDF onLoadComplete - raw data:', JSON.stringify(data));
-                  console.log('PDF onLoadComplete - extracted pages:', numberOfPages);
-                  
-                  if (numberOfPages > 0) {
-                    console.log(`Setting total pages to ${numberOfPages} (was ${totalPages || document?.pageCount || 'unknown'})`);
-                    setTotalPages(numberOfPages);
-                    // Update document page count if it differs
-                    if (document && document.pageCount !== numberOfPages) {
-                      console.log(`Updating document page count from ${document.pageCount} to ${numberOfPages}`);
-                      await updateDocumentPageCount(document.id, numberOfPages);
-                    }
-                  } else {
-                    console.warn('PDF loaded but numberOfPages is 0 or invalid. Data:', data);
-                    // Try to get page count from PDF ref if available
-                    if (pdfRef.current) {
-                      try {
-                        // Some PDF libraries expose getPageCount method
-                        const pageCount = (pdfRef.current as any)?.getPageCount?.() || 
-                                         (pdfRef.current as any)?.numberOfPages;
-                        if (pageCount && pageCount > 0) {
-                          console.log(`Got page count from ref: ${pageCount}`);
-                          setTotalPages(pageCount);
-                          if (document && document.pageCount !== pageCount) {
-                            await updateDocumentPageCount(document.id, pageCount);
+                  pdfUri = docPath + (docPath.endsWith('/') ? '' : '/') + pdfUri;
+                }
+                
+                // Normalize: ensure exactly one leading / and clean up multiple slashes in path
+                // Remove all leading slashes first, then add exactly one
+                pdfUri = pdfUri.replace(/^\/+/, ''); // Remove all leading slashes
+                pdfUri = '/' + pdfUri.replace(/\/+/g, '/'); // Add one slash and clean up multiple slashes in path
+                
+                // Add file:// prefix (will result in file:/// for absolute paths)
+                // Both iOS and Android need file:/// (three slashes) for absolute paths
+                pdfUri = `file://${pdfUri}`;
+                
+                // Final validation: ensure we have exactly file:/// (three slashes)
+                // Handle any edge cases where we might have 4 slashes or missing third slash
+                if (pdfUri.startsWith('file:////')) {
+                  // Has four slashes - remove the extra one
+                  pdfUri = 'file:///' + pdfUri.substring(8);
+                } else if (pdfUri.startsWith('file://') && !pdfUri.startsWith('file:///')) {
+                  // Has file:// but missing third slash - add it
+                  pdfUri = 'file:///' + pdfUri.substring(7);
+                }
+                
+                // Final cleanup: ensure exactly file:/// and clean path slashes
+                // This is critical - Android paths should be file:/// not file:////
+                if (pdfUri.startsWith('file:///')) {
+                  const pathPart = pdfUri.substring(7); // Everything after file:///
+                  // Remove any leading slashes from pathPart to avoid file:////
+                  const cleanPath = pathPart.replace(/^\/+/, '').replace(/\/+/g, '/');
+                  pdfUri = `file:///${cleanPath}`;
+                }
+                
+                console.log('PDF URI (final):', pdfUri);
+                console.log('Original filePath:', document.filePath);
+                console.log('Document directory:', FileSystemLegacy.documentDirectory);
+                
+                // For iOS, react-native-pdf needs file:/// format (three slashes)
+                const pdfSource = { 
+                  uri: pdfUri, // Use file:/// format for iOS
+                  cache: true 
+                };
+                
+                console.log('PDF source being used:', JSON.stringify(pdfSource));
+                
+                return (
+                  <Pdf
+                    ref={pdfRef}
+                    source={pdfSource}
+                    page={currentPage}
+                    // Zoom settings - enables pinch to zoom
+                    maxZoom={5}
+                    minZoom={0.5}
+                    // Vertical scrolling only - no horizontal page navigation
+                    horizontal={false}
+                    spacing={0}
+                    // Fit width for better viewing
+                    fitWidth={true}
+                    // Multi-page mode - allows scrolling through all pages vertically
+                    singlePage={false}
+                    // Enable activity indicator while loading
+                    enablePaging={false}
+                    // Additional iOS-specific props
+                    enableAnnotationRendering={true}
+                    // Note: Text selection in PDF is limited by react-native-pdf library capabilities
+                    // The library doesn't fully support text selection, especially on Android
+                    // Zoom and scrolling are fully supported
+                    // Ensure PDF is visible - add activity indicator
+                    activityIndicatorProps={{
+                      color: themeColors.primary,
+                      progressTintColor: themeColors.primary,
+                    }}
+                    // Show activity indicator
+                    showsHorizontalScrollIndicator={false}
+                    showsVerticalScrollIndicator={true}
+                    // Ensure PDF takes full space
+                    style={[styles.pdf, { width: '100%', height: '100%' }]}
+                    onPageChanged={(page: number, numberOfPages?: number) => {
+                      // Pass numberOfPages to handlePageChange so it can update pageCount correctly
+                      handlePageChange(page, numberOfPages);
+                    }}
+                    onLoadComplete={async (data: any) => {
+                      // PDF loaded successfully - update total pages
+                      setPdfError(null);
+                      setPdfLoading(false);
+                      console.log('PDF onLoadComplete called');
+                      
+                      // react-native-pdf onLoadComplete receives an object with numberOfPages
+                      // Format: { numberOfPages: number, width: number, height: number, ... }
+                      let numberOfPages = 0;
+                      
+                      if (typeof data === 'number') {
+                        numberOfPages = data;
+                      } else if (data && typeof data === 'object') {
+                        // Try different possible property names
+                        numberOfPages = data.numberOfPages || data.numpages || data.pages || data.pageCount || 0;
+                      }
+                      
+                      console.log('PDF onLoadComplete - raw data:', JSON.stringify(data));
+                      console.log('PDF onLoadComplete - extracted pages:', numberOfPages);
+                      
+                      if (numberOfPages > 0) {
+                        console.log(`Setting total pages to ${numberOfPages} (was ${totalPages || document?.pageCount || 'unknown'})`);
+                        setTotalPages(numberOfPages);
+                        // Update document page count if it differs
+                        if (document && document.pageCount !== numberOfPages) {
+                          console.log(`Updating document page count from ${document.pageCount} to ${numberOfPages}`);
+                          await updateDocumentPageCount(document.id, numberOfPages);
+                        }
+                      } else {
+                        console.warn('PDF loaded but numberOfPages is 0 or invalid. Data:', data);
+                        // Try to get page count from PDF ref if available
+                        if (pdfRef.current) {
+                          try {
+                            // Some PDF libraries expose getPageCount method
+                            const pageCount = (pdfRef.current as any)?.getPageCount?.() || 
+                                             (pdfRef.current as any)?.numberOfPages;
+                            if (pageCount && pageCount > 0) {
+                              console.log(`Got page count from ref: ${pageCount}`);
+                              setTotalPages(pageCount);
+                              if (document && document.pageCount !== pageCount) {
+                                await updateDocumentPageCount(document.id, pageCount);
+                              }
+                            }
+                          } catch (e) {
+                            console.warn('Could not get page count from ref:', e);
                           }
                         }
-                      } catch (e) {
-                        console.warn('Could not get page count from ref:', e);
                       }
-                    }
-                  }
-                }}
-                onError={(error: any) => {
-                  console.error('PDF render error:', error);
-                  console.error('PDF file path:', document.filePath);
-                  // Handle "Already closed" error gracefully
-                  if (error?.message?.includes('Already closed') || error?.message?.includes('closed')) {
-                    console.warn('PDF component was closed during rendering - this is normal when navigating away');
-                    return;
-                  }
-                  setPdfError(error?.message || 'Failed to render PDF. Native module may not be linked.');
-                }}
-                onPageChangeFailed={(error: any) => {
-                  // Handle page change failures (e.g., "Already closed" errors)
-                  if (error?.message?.includes('Already closed') || error?.message?.includes('closed')) {
-                    console.warn('PDF page change failed - document was closed. This is normal when navigating away.');
-                    return;
-                  }
-                  console.error('PDF page change failed:', error);
-                }}
-                style={styles.pdf}
-              />
-              ) : (
+                    }}
+                    onError={(error: any) => {
+                      console.error('PDF render error:', error);
+                      console.error('PDF file path:', document.filePath);
+                      console.error('PDF URI used:', pdfUri);
+                      console.error('Error details:', JSON.stringify(error));
+                      // Handle "Already closed" error gracefully
+                      if (error?.message?.includes('Already closed') || error?.message?.includes('closed')) {
+                        console.warn('PDF component was closed during rendering - this is normal when navigating away');
+                        return;
+                      }
+                      const errorMessage = error?.message || error?.toString() || 'Failed to render PDF. Native module may not be linked.';
+                      console.error('Setting PDF error:', errorMessage);
+                      setPdfError(errorMessage);
+                    }}
+                    onPageChangeFailed={(error: any) => {
+                      // Handle page change failures (e.g., "Already closed" errors)
+                      if (error?.message?.includes('Already closed') || error?.message?.includes('closed')) {
+                        console.warn('PDF page change failed - document was closed. This is normal when navigating away.');
+                        return;
+                      }
+                      console.error('PDF page change failed:', error);
+                    }}
+                  />
+                );
+              })() : (
                 <View style={styles.fallbackContainer}>
                   <Text style={[styles.fallbackText, { color: themeColors.text }]}>
                     PDF component not available. Platform: {Platform.OS}
@@ -1422,56 +1606,57 @@ export default function ReaderScreen() {
             </View>
           )}
         </View>
-        </Pressable>
+        {/* Tap-to-toggle UI for PDF */}
+        {!uiVisible && !showSelectionToolbar && (
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={toggleUI}
+            pointerEvents="box-none"
+          />
+        )}
+        </View>
       ) : (
         <View style={{ flex: 1 }}>
           {document.format === 'epub' ? (
-            <View style={{ flex: 1 }}>
-              <ScrollView
-                ref={epubScrollRef}
-                style={{ flex: 1 }}
-                contentContainerStyle={[
-                  { padding: settings.margin, flexGrow: 1 },
-                ]}
-                scrollEnabled={true}
-                showsVerticalScrollIndicator={true}
-                decelerationRate="normal"
-                scrollEventThrottle={16}
-                {...(Platform.OS === 'ios' ? {
-                  maximumZoomScale: 3.0,
-                  minimumZoomScale: 0.5,
-                  zoomScale: 1.0,
-                  bouncesZoom: true,
-                } : {})}
-                nestedScrollEnabled={true}
-                removeClippedSubviews={false}
-                onScroll={(event) => {
-                  if (uiVisible && hideTimer) {
-                    clearTimeout(hideTimer);
-                    const timer = setTimeout(() => setUiVisible(false), 3000);
-                    setHideTimer(timer);
-                  }
-                  const scrollY = event.nativeEvent.contentOffset.y;
-                  const contentHeight = event.nativeEvent.contentSize.height;
-                  if (document && scrollY > 0 && contentHeight > 0) {
-                    if (scrollDebounceTimerRef.current) clearTimeout(scrollDebounceTimerRef.current);
-                    scrollDebounceTimerRef.current = setTimeout(async () => {
-                      const progress = Math.min(100, (scrollY / contentHeight) * 100);
-                      await upsertReadingPosition({
-                        id: `${document.id}-position`,
-                        documentId: document.id,
-                        position: Math.round(scrollY),
-                        progress: Math.round(progress),
-                        updatedAt: new Date().toISOString(),
-                      });
-                    }, 1000);
-                  }
-                }}
-              >
-            <Pressable
-              style={{ flex: 1, minHeight: Dimensions.get('window').height - 120 }}
-              onPress={() => { if (!showSelectionToolbar) toggleUI(); }}
+            <ZoomableScrollView
+              ref={epubScrollRef}
+              style={{ flex: 1 }}
+              contentContainerStyle={[
+                { padding: settings.margin },
+              ]}
+              scrollEnabled={true}
+              showsVerticalScrollIndicator={true}
+              decelerationRate="fast"
+              scrollEventThrottle={1}
+              minZoom={0.5}
+              maxZoom={3.0}
+              nestedScrollEnabled={true}
+              removeClippedSubviews={false}
+              onScroll={(event) => {
+                if (uiVisible && hideTimer) {
+                  clearTimeout(hideTimer);
+                  const timer = setTimeout(() => setUiVisible(false), 3000);
+                  setHideTimer(timer);
+                }
+                const scrollY = event.nativeEvent.contentOffset.y;
+                const contentHeight = event.nativeEvent.contentSize.height;
+                if (document && scrollY > 0 && contentHeight > 0) {
+                  if (scrollDebounceTimerRef.current) clearTimeout(scrollDebounceTimerRef.current);
+                  scrollDebounceTimerRef.current = setTimeout(async () => {
+                    const progress = Math.min(100, (scrollY / contentHeight) * 100);
+                    await upsertReadingPosition({
+                      id: `${document.id}-position`,
+                      documentId: document.id,
+                      position: Math.round(scrollY),
+                      progress: Math.round(progress),
+                      updatedAt: new Date().toISOString(),
+                    });
+                  }, 1000);
+                }
+              }}
             >
+            <View>
             {loadingContent ? (
               <View style={{ padding: 20, alignItems: 'center' }}>
                 <Text style={[styles.loadingText, { color: themeColors.text }]}>
@@ -1500,7 +1685,7 @@ export default function ReaderScreen() {
                   ol: { color: themeColors.text, marginBottom: 10 },
                   li: { color: themeColors.text, marginBottom: 5 },
                 }}
-                // Enable text selection - use systemProps for better Android support
+                // Enable text selection
                 systemFonts={[]}
                 defaultTextProps={{ 
                   selectable: true,
@@ -1511,6 +1696,25 @@ export default function ReaderScreen() {
                 }}
                 renderersProps={{
                   text: { selectable: true },
+                }}
+                // Use custom renderer for text nodes to capture selection
+                // Note: In v6, text renderers receive TNodeRendererProps with tnode.data
+                renderers={{
+                  text: (props: any) => {
+                    // Extract text content from TNode - tnode.data contains the text string for TText nodes
+                    const textContent = props.tnode?.data || '';
+                    return (
+                      <SelectableTextRenderer
+                        {...props}
+                        onTextSelection={(text: string, position: { x: number; y: number }) => {
+                          handleTextSelection(text, position);
+                        }}
+                        selectionColor={themeColors.surface}
+                      >
+                        {textContent}
+                      </SelectableTextRenderer>
+                    );
+                  },
                 }}
               />
             ) : epubContent && epubContent.text ? (
@@ -1535,7 +1739,7 @@ export default function ReaderScreen() {
                   ol: { color: themeColors.text, marginBottom: 10 },
                   li: { color: themeColors.text, marginBottom: 5 },
                 }}
-                // Enable text selection - use systemProps for better Android support
+                // Enable text selection
                 systemFonts={[]}
                 defaultTextProps={{ 
                   selectable: true,
@@ -1547,6 +1751,25 @@ export default function ReaderScreen() {
                 renderersProps={{
                   text: { selectable: true },
                 }}
+                // Use custom renderer for text nodes to capture selection
+                // Note: In v6, text renderers receive TNodeRendererProps with tnode.data
+                renderers={{
+                  text: (props: any) => {
+                    // Extract text content from TNode - tnode.data contains the text string for TText nodes
+                    const textContent = props.tnode?.data || '';
+                    return (
+                      <SelectableTextRenderer
+                        {...props}
+                        onTextSelection={(text: string, position: { x: number; y: number }) => {
+                          handleTextSelection(text, position);
+                        }}
+                        selectionColor={themeColors.surface}
+                      >
+                        {textContent}
+                      </SelectableTextRenderer>
+                    );
+                  },
+                }}
               />
             ) : (
               <View style={{ padding: 20, alignItems: 'center' }}>
@@ -1555,56 +1778,47 @@ export default function ReaderScreen() {
                 </Text>
               </View>
             )}
-            </Pressable>
-              </ScrollView>
             </View>
+            </ZoomableScrollView>
           ) : document.format === 'docx' ? (
-            <View style={{ flex: 1 }}>
-              <ScrollView
-                ref={epubScrollRef}
-                style={{ flex: 1 }}
-                contentContainerStyle={[
-                  { padding: settings.margin, flexGrow: 1 },
-                ]}
-                scrollEnabled={true}
-                showsVerticalScrollIndicator={true}
-                decelerationRate="normal"
-                scrollEventThrottle={16}
-                {...(Platform.OS === 'ios' ? {
-                  maximumZoomScale: 3.0,
-                  minimumZoomScale: 0.5,
-                  zoomScale: 1.0,
-                  bouncesZoom: true,
-                } : {})}
-                nestedScrollEnabled={true}
-                removeClippedSubviews={false}
-                onScroll={(event) => {
-                  if (uiVisible && hideTimer) {
-                    clearTimeout(hideTimer);
-                    const timer = setTimeout(() => setUiVisible(false), 3000);
-                    setHideTimer(timer);
-                  }
-                  const scrollY = event.nativeEvent.contentOffset.y;
-                  const contentHeight = event.nativeEvent.contentSize.height;
-                  if (document && scrollY > 0 && contentHeight > 0) {
-                    if (scrollDebounceTimerRef.current) clearTimeout(scrollDebounceTimerRef.current);
-                    scrollDebounceTimerRef.current = setTimeout(async () => {
-                      const progress = Math.min(100, (scrollY / contentHeight) * 100);
-                      await upsertReadingPosition({
-                        id: `${document.id}-position`,
-                        documentId: document.id,
-                        position: Math.round(scrollY),
-                        progress: Math.round(progress),
-                        updatedAt: new Date().toISOString(),
-                      });
-                    }, 1000);
-                  }
-                }}
-              >
-            <Pressable
-              style={{ flex: 1, minHeight: Dimensions.get('window').height - 120 }}
-              onPress={() => { if (!showSelectionToolbar) toggleUI(); }}
+            <ZoomableScrollView
+              ref={epubScrollRef}
+              style={{ flex: 1 }}
+              contentContainerStyle={[
+                { padding: settings.margin },
+              ]}
+              scrollEnabled={true}
+              showsVerticalScrollIndicator={true}
+              decelerationRate="fast"
+              scrollEventThrottle={1}
+              minZoom={0.5}
+              maxZoom={3.0}
+              nestedScrollEnabled={true}
+              removeClippedSubviews={false}
+              onScroll={(event) => {
+                if (uiVisible && hideTimer) {
+                  clearTimeout(hideTimer);
+                  const timer = setTimeout(() => setUiVisible(false), 3000);
+                  setHideTimer(timer);
+                }
+                const scrollY = event.nativeEvent.contentOffset.y;
+                const contentHeight = event.nativeEvent.contentSize.height;
+                if (document && scrollY > 0 && contentHeight > 0) {
+                  if (scrollDebounceTimerRef.current) clearTimeout(scrollDebounceTimerRef.current);
+                  scrollDebounceTimerRef.current = setTimeout(async () => {
+                    const progress = Math.min(100, (scrollY / contentHeight) * 100);
+                    await upsertReadingPosition({
+                      id: `${document.id}-position`,
+                      documentId: document.id,
+                      position: Math.round(scrollY),
+                      progress: Math.round(progress),
+                      updatedAt: new Date().toISOString(),
+                    });
+                  }, 1000);
+                }
+              }}
             >
+            <View>
             {loadingContent ? (
               <Text style={[styles.loadingText, { color: themeColors.text }]}>
                 Loading DOCX content...
@@ -1642,6 +1856,25 @@ export default function ReaderScreen() {
                 renderersProps={{
                   text: { selectable: true },
                 }}
+                // Use custom renderer for text nodes to capture selection
+                // Note: In v6, text renderers receive TNodeRendererProps with tnode.data
+                renderers={{
+                  text: (props: any) => {
+                    // Extract text content from TNode - tnode.data contains the text string for TText nodes
+                    const textContent = props.tnode?.data || '';
+                    return (
+                      <SelectableTextRenderer
+                        {...props}
+                        onTextSelection={(text: string, position: { x: number; y: number }) => {
+                          handleTextSelection(text, position);
+                        }}
+                        selectionColor={themeColors.surface}
+                      >
+                        {textContent}
+                      </SelectableTextRenderer>
+                    );
+                  },
+                }}
               />
             ) : (
               <HighlightedText
@@ -1656,6 +1889,9 @@ export default function ReaderScreen() {
                     : { x: screenWidth / 2, y: 300 };
                   setHighlightPopover({ highlight, note, position });
                 }}
+                onTextSelection={(selectedText, position) => {
+                  handleTextSelection(selectedText, position);
+                }}
                 style={styles.text}
                 fontSize={settings.fontSize}
                 lineHeight={settings.fontSize * settings.lineSpacing}
@@ -1664,12 +1900,11 @@ export default function ReaderScreen() {
                 selectionColor={themeColors.surface}
               />
             )}
-            </Pressable>
-              </ScrollView>
             </View>
+            </ZoomableScrollView>
           ) : (
             <View style={{ flex: 1 }}>
-              <ScrollView
+              <ZoomableScrollView
                 ref={epubScrollRef}
                 style={{ flex: 1 }}
                 contentContainerStyle={[
@@ -1677,14 +1912,10 @@ export default function ReaderScreen() {
                 ]}
                 scrollEnabled={true}
                 showsVerticalScrollIndicator={true}
-                decelerationRate="normal"
-                scrollEventThrottle={16}
-                {...(Platform.OS === 'ios' ? {
-                  maximumZoomScale: 3.0,
-                  minimumZoomScale: 0.5,
-                  zoomScale: 1.0,
-                  bouncesZoom: true,
-                } : {})}
+                decelerationRate="fast"
+                scrollEventThrottle={1}
+                minZoom={0.5}
+                maxZoom={3.0}
                 nestedScrollEnabled={true}
                 removeClippedSubviews={false}
                 onScroll={(event) => {
@@ -1710,10 +1941,7 @@ export default function ReaderScreen() {
                   }
                 }}
               >
-                <Pressable
-                  style={{ flex: 1, minHeight: Dimensions.get('window').height - 120 }}
-                  onPress={() => { if (!showSelectionToolbar) toggleUI(); }}
-                >
+                <View>
                 {loadingContent ? (
                   <Text style={[styles.loadingText, { color: themeColors.text }]}>
                     Loading content...
@@ -1731,17 +1959,19 @@ export default function ReaderScreen() {
                         : { x: screenWidth / 2, y: 300 };
                       setHighlightPopover({ highlight, note, position });
                     }}
+                    onTextSelection={(selectedText, position) => {
+                      handleTextSelection(selectedText, position);
+                    }}
                     style={styles.text}
                     fontSize={settings.fontSize}
                     lineHeight={settings.fontSize * settings.lineSpacing}
                     color={themeColors.text}
                     fontFamily={settings.fontFamily === 'serif' ? 'Georgia' : 'System'}
                     selectionColor={themeColors.surface}
-                  />
-                )}
-                </Pressable>
-              </ScrollView>
+              />
+            )}
             </View>
+            </ZoomableScrollView>
           )}
         </View>
       )}
@@ -2169,45 +2399,45 @@ export default function ReaderScreen() {
         onDelete={handleDeleteDocument}
       />
 
-        {/* TOC Modal */}
-        {document.format === 'epub' && epubChapters.length > 0 && (
-          <TOCModal
-            visible={showTOC}
-            onClose={() => setShowTOC(false)}
-            chapters={epubChapters}
-            currentChapter={currentChapter}
-            onChapterSelect={async (index) => {
-              if (!document || !epubChapters[index]) return;
-              setCurrentChapter(index);
-              setLoadingContent(true);
-              try {
-                const chapter = epubChapters[index];
-                const chapterHtml = await getEPUBChapterContent(document.filePath, chapter.href);
-                // Limit content size for memory management
-                const maxSize = 5 * 1024 * 1024; // 5MB limit
-                if (chapterHtml.length > maxSize) {
-                  setTextContent(chapterHtml.substring(0, maxSize) + '\n\n[... Content truncated ...]');
-                } else {
-                  setTextContent(chapterHtml);
-                }
-                setShowTOC(false);
-                // Update reading position to reflect chapter change
-                const chapterNumber = index + 1;
-                setCurrentPage(chapterNumber); // Update currentPage for display
-                await saveReadingPosition(chapterNumber);
-              } catch (error) {
-                console.error('Error loading chapter content:', error);
-                Alert.alert('Error', 'Failed to load chapter content. Please try again.');
-              } finally {
-                setLoadingContent(false);
+      {/* TOC Modal */}
+      {document.format === 'epub' && epubChapters.length > 0 && (
+        <TOCModal
+          visible={showTOC}
+          onClose={() => setShowTOC(false)}
+          chapters={epubChapters}
+          currentChapter={currentChapter}
+          onChapterSelect={async (index) => {
+            if (!document || !epubChapters[index]) return;
+            setCurrentChapter(index);
+            setLoadingContent(true);
+            try {
+              const chapter = epubChapters[index];
+              const chapterHtml = await getEPUBChapterContent(document.filePath, chapter.href);
+              // Limit content size for memory management
+              const maxSize = 5 * 1024 * 1024; // 5MB limit
+              if (chapterHtml.length > maxSize) {
+                setTextContent(chapterHtml.substring(0, maxSize) + '\n\n[... Content truncated ...]');
+              } else {
+                setTextContent(chapterHtml);
               }
-            }}
-            title="Table of Contents"
-          />
-        )}
+              setShowTOC(false);
+              // Update reading position to reflect chapter change
+              const chapterNumber = index + 1;
+              setCurrentPage(chapterNumber); // Update currentPage for display
+              await saveReadingPosition(chapterNumber);
+            } catch (error) {
+              console.error('Error loading chapter content:', error);
+              Alert.alert('Error', 'Failed to load chapter content. Please try again.');
+            } finally {
+              setLoadingContent(false);
+            }
+          }}
+          title="Table of Contents"
+        />
+      )}
 
-        {/* Manual Text Input Modal for PDFs (Android text selection workaround) */}
-        <Modal
+      {/* Manual Text Input Modal for PDFs (Android text selection workaround) */}
+      <Modal
           visible={showManualTextInput}
           transparent
           animationType="slide"
@@ -2266,10 +2496,10 @@ export default function ReaderScreen() {
               </View>
             </View>
           </View>
-        </Modal>
+      </Modal>
 
-        {/* Bookmarks Modal */}
-        <Modal
+      {/* Bookmarks Modal */}
+      <Modal
           visible={showBookmarks}
           transparent
           animationType="slide"
@@ -2323,7 +2553,7 @@ export default function ReaderScreen() {
             </View>
           </View>
         </Modal>
-      </View>
+    </View>
     );
   }
 
@@ -2396,8 +2626,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
     borderRadius: 8,
   },
+  pdfContainer: {
+    flex: 1,
+  },
   pdf: {
     flex: 1,
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#FFFFFF',
   },
   textContainer: {
     flex: 1,

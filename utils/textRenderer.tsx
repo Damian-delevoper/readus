@@ -3,8 +3,8 @@
  * Renders text with highlighted segments inline
  */
 
-import React from 'react';
-import { Text } from 'react-native';
+import React, { useRef } from 'react';
+import { Text, Platform } from 'react-native';
 import { Highlight } from '@/types';
 
 interface HighlightedTextProps {
@@ -18,6 +18,8 @@ interface HighlightedTextProps {
   fontFamily?: string;
   /** Android: selection highlight color. Improves selection visibility. */
   selectionColor?: string;
+  /** Callback when text is selected */
+  onTextSelection?: (text: string, position: { x: number; y: number }) => void;
 }
 
 export function HighlightedText({
@@ -30,12 +32,36 @@ export function HighlightedText({
   color = '#1a1a1a',
   fontFamily,
   selectionColor,
+  onTextSelection,
 }: HighlightedTextProps) {
-  const textProps = { selectable: true as const, ...(selectionColor != null && { selectionColor }) };
+  const textRef = useRef<Text>(null);
+  
+  const textProps = { 
+    selectable: true as const, 
+    ...(selectionColor != null && { selectionColor }),
+    ...(onTextSelection && {
+      onSelectionChange: (event: any) => {
+        const { selection } = event.nativeEvent;
+        if (selection.start !== selection.end) {
+          const selectedText = text.substring(selection.start, selection.end);
+          if (selectedText.trim() && textRef.current) {
+            // Get position from the text component
+            textRef.current.measure((x, y, width, height, pageX, pageY) => {
+              onTextSelection(selectedText, { 
+                x: pageX + width / 2, 
+                y: pageY + (selection.start === 0 ? 0 : height / 2) 
+              });
+            });
+          }
+        }
+      },
+    }),
+  };
 
   if (!highlights || highlights.length === 0) {
     return (
       <Text
+        ref={textRef}
         {...textProps}
         style={[
           {
@@ -100,6 +126,7 @@ export function HighlightedText({
 
   return (
     <Text
+      ref={textRef}
       {...textProps}
       style={[
         {

@@ -12,8 +12,6 @@ import {
   RefreshControl,
   Alert,
   LayoutAnimation,
-  Platform,
-  UIManager,
   ScrollView,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -28,11 +26,6 @@ import { useThemeStore, lightColors, darkColors } from '@/stores/themeStore';
 import { getReadingPosition } from '@/services/database';
 
 type LibraryView = 'all' | 'reading' | 'finished' | 'unread' | 'favorites';
-
-// Enable LayoutAnimation on Android
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 export default function LibraryScreen() {
   const router = useRouter();
